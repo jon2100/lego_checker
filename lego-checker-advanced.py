@@ -62,12 +62,42 @@ async def check_lego_status(url, page_wait=20):
     """Simple check - just be patient"""
 
     async with async_playwright() as p:
-        browser = await p.chromium.launch(headless=True)
-        page = await browser.new_page()
+        # Launch browser with better anti-detection
+        browser = await p.chromium.launch(
+            headless=False,  # Use headed mode to avoid detection
+            args=[
+                '--disable-blink-features=AutomationControlled',
+                '--disable-dev-shm-usage',
+                '--no-sandbox',
+            ]
+        )
+
+        # Create context with realistic settings
+        context = await browser.new_context(
+            viewport={'width': 1920, 'height': 1080},
+            user_agent='Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+            locale='en-US',
+            timezone_id='America/New_York',
+        )
+
+        # Add extra headers
+        await context.set_extra_http_headers({
+            'Accept-Language': 'en-US,en;q=0.9',
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+        })
+
+        page = await context.new_page()
+
+        # Remove webdriver property
+        await page.add_init_script("""
+            Object.defineProperty(navigator, 'webdriver', {
+                get: () => undefined
+            });
+        """)
 
         try:
             print(f"    Loading...")
-            await page.goto(url, timeout=60000)
+            await page.goto(url, timeout=60000, wait_until='domcontentloaded')
 
             print(f"    Waiting {page_wait}s for content...")
             await page.wait_for_timeout(page_wait * 1000)
@@ -82,6 +112,7 @@ async def check_lego_status(url, page_wait=20):
             with open(f'/tmp/lego_{product_name}.txt', 'w') as f:
                 f.write(f"Title: {title}\n\n{body_text[:10000]}")
 
+            await context.close()
             await browser.close()
 
             # Check if blocked
@@ -111,7 +142,11 @@ async def check_lego_status(url, page_wait=20):
             return status, title, None
 
         except Exception as e:
-            await browser.close()
+            try:
+                await context.close()
+                await browser.close()
+            except:
+                pass
             return None, None, str(e)
 
 def send_email(config, subject, body):
