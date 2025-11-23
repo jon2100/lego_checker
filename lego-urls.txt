@@ -1,0 +1,11 @@
+# LEGO Product URLs to Monitor
+# Add one URL per line
+# Lines starting with # are comments
+
+# The Globe
+https://www.lego.com/en-us/product/the-globe-21332
+https://www.lego.com/en-us/product/star-trek-u-s-s-enterprise-ncc-1701-d-10356
+https://www.lego.com/en-us/product/tropical-aquarium-10366
+https://www.lego.com/en-us/product/captain-jack-sparrows-pirate-ship-10365
+https://www.lego.com/en-us/product/architecture-21064-21064
+
