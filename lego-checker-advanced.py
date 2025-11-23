@@ -17,7 +17,11 @@ CONFIG_FILE = "lego-config.ini"
 URL_FILE = "lego-urls.txt"
 
 def cleanup_temp_files():
-    for pattern in ['/tmp/lego_*.html', '/tmp/lego_*.txt']:
+    """Clean up old log files from the logs directory"""
+    log_dir = 'logs'
+    if not os.path.exists(log_dir):
+        os.makedirs(log_dir)
+    for pattern in ['logs/lego_*.html', 'logs/lego_*.txt']:
         for f in glob.glob(pattern):
             try:
                 os.remove(f)
@@ -106,9 +110,9 @@ async def check_lego_status(url, page_wait=20):
 
             product_name = get_product_name(url)
             html = await page.content()
-            with open(f'/tmp/lego_{product_name}.html', 'w') as f:
+            with open(f'logs/lego_{product_name}.html', 'w') as f:
                 f.write(html)
-            with open(f'/tmp/lego_{product_name}.txt', 'w') as f:
+            with open(f'logs/lego_{product_name}.txt', 'w') as f:
                 f.write(f"Title: {title}\n\n{body_text[:10000]}")
 
             await context.close()
@@ -118,25 +122,52 @@ async def check_lego_status(url, page_wait=20):
             if 'cloudflare' in body_text.lower() or 'verify you are human' in body_text.lower():
                 return 'BLOCKED', None, None
 
-            # Check status
+            # Check status - prioritize specific statuses over generic "available"
             text_lower = body_text.lower()
 
-            if 'available now' in text_lower or 'add to bag' in text_lower:
-                status = 'AVAILABLE'
-            elif 'pre-order' in text_lower:
-                status = 'PRE_ORDER'
-            elif 'coming soon' in text_lower:
-                status = 'COMING_SOON'
-            elif 'backorder' in text_lower:
-                status = 'BACKORDER'
-            elif 'retired' in text_lower:
+            # Debug: find what status indicators are present
+            found_indicators = []
+            indicators = {
+                'retired': 'retired',
+                'coming soon': 'coming soon',
+                'sold out': 'sold out',
+                'out of stock': 'out of stock',
+                'temporarily out of stock': 'temporarily out of stock',
+                'pre-order': 'pre-order',
+                'backorder': 'backorder',
+                'available now': 'available now',
+                'add to bag': 'add to bag',
+                'notify me': 'notify me',
+            }
+
+            for key, label in indicators.items():
+                if key in text_lower:
+                    found_indicators.append(label)
+
+            # Check in priority order (most specific first)
+            if 'retired' in text_lower or 'no longer available' in text_lower:
                 status = 'RETIRED'
-            elif 'temporarily out of stock' in text_lower:
-                status = 'TEMP_OUT'
+            elif 'coming soon' in text_lower and 'add to bag' not in text_lower:
+                status = 'COMING_SOON'
             elif 'sold out' in text_lower:
                 status = 'SOLD_OUT'
+            elif 'temporarily out of stock' in text_lower:
+                status = 'TEMP_OUT'
+            elif 'out of stock' in text_lower and 'notify me' in text_lower:
+                status = 'OUT_OF_STOCK'
+            elif 'pre-order' in text_lower:
+                status = 'PRE_ORDER'
+            elif 'backorder' in text_lower:
+                status = 'BACKORDER'
+            elif 'add to bag' in text_lower or 'available now' in text_lower:
+                status = 'AVAILABLE'
             else:
                 status = 'UNKNOWN'
+
+            # Save debug info
+            with open(f'logs/lego_{product_name}_debug.txt', 'w') as f:
+                f.write(f"Status: {status}\n")
+                f.write(f"Found indicators: {', '.join(found_indicators) if found_indicators else 'none'}\n")
 
             return status, title, None
 
@@ -190,22 +221,30 @@ async def main():
         status, title, error = await check_lego_status(url, page_wait)
 
         if error:
-            print(f"    ✗ Error: {error}")
+            print(f"    ERROR: {error}")
         elif status == 'BLOCKED':
-            print(f"    🛑 Cloudflare blocked - check /tmp/lego_{product_name}.txt")
+            print(f"    BLOCKED: Cloudflare blocked - check logs/lego_{product_name}.txt")
         else:
-            emoji = {'AVAILABLE':'✅','PRE_ORDER':'📅','COMING_SOON':'🔜','BACKORDER':'⏳','RETIRED':'🚫','TEMP_OUT':'⏸️','SOLD_OUT':'❌','UNKNOWN':'❓'}
-            print(f"    {emoji.get(status,'?')} {status}")
+            print(f"    STATUS: {status}")
+
+            # Read debug info to show what was found
+            try:
+                with open(f'logs/lego_{product_name}_debug.txt', 'r') as f:
+                    debug_lines = f.readlines()
+                    if len(debug_lines) > 1:
+                        print(f"    Found: {debug_lines[1].strip().replace('Found indicators: ', '')}")
+            except:
+                pass
 
             if status in ['AVAILABLE','PRE_ORDER','BACKORDER']:
-                if send_email(config, f"🎉 LEGO {status} - {product_name}", f"URL: {url}\nStatus: {status}"):
-                    print(f"       ✉️  Email sent")
+                if send_email(config, f"LEGO {status} - {product_name}", f"URL: {url}\nStatus: {status}"):
+                    print(f"    Email sent")
 
         await asyncio.sleep(delay)
 
 
     print("\n" + "=" * 70)
-    print("Check /tmp/lego_*.txt to see what was extracted")
+    print("Check logs/lego_*.txt to see what was extracted")
 
 if __name__ == '__main__':
     asyncio.run(main())

@@ -1,7 +1,5 @@
-*.DS_Store
-*.old
-*.org
-*.bk
-*.bak
-*.swp
-*.tmp
+# Ignore HTML files (too large for git)
+logs/*.html
+
+# Keep the logs directory structure
+!logs/.gitkeep
