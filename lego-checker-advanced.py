@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """
-LEGO Stock Checker - Simple approach with manual anti-detection
+LEGO Stock Checker - Firefox headless with anti-detection
+Uses Firefox instead of Chromium for better stealth in headless mode
 """
 
 import asyncio
@@ -62,20 +63,21 @@ async def check_lego_status(url, page_wait=20):
     """Simple check - just be patient"""
 
     async with async_playwright() as p:
-        # Launch browser with better anti-detection
-        browser = await p.chromium.launch(
-            headless=False,  # Use headed mode to avoid detection
-            args=[
-                '--disable-blink-features=AutomationControlled',
-                '--disable-dev-shm-usage',
-                '--no-sandbox',
-            ]
+        # Launch browser with stealth settings for headless mode
+        browser = await p.firefox.launch(
+            headless=True,
+            firefox_user_prefs={
+                'dom.webdriver.enabled': False,
+                'useAutomationExtension': False,
+                'general.platform.override': 'Linux x86_64',
+                'general.useragent.override': 'Mozilla/5.0 (X11; Linux x86_64; rv:120.0) Gecko/20100101 Firefox/120.0',
+            }
         )
 
         # Create context with realistic settings
         context = await browser.new_context(
             viewport={'width': 1920, 'height': 1080},
-            user_agent='Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+            user_agent='Mozilla/5.0 (X11; Linux x86_64; rv:120.0) Gecko/20100101 Firefox/120.0',
             locale='en-US',
             timezone_id='America/New_York',
         )
@@ -83,17 +85,14 @@ async def check_lego_status(url, page_wait=20):
         # Add extra headers
         await context.set_extra_http_headers({
             'Accept-Language': 'en-US,en;q=0.9',
-            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
+            'Accept-Encoding': 'gzip, deflate, br',
+            'DNT': '1',
+            'Connection': 'keep-alive',
+            'Upgrade-Insecure-Requests': '1',
         })
 
         page = await context.new_page()
-
-        # Remove webdriver property
-        await page.add_init_script("""
-            Object.defineProperty(navigator, 'webdriver', {
-                get: () => undefined
-            });
-        """)
 
         try:
             print(f"    Loading...")
