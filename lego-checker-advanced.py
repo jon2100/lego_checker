@@ -60,34 +60,34 @@ def get_product_name(url):
 
 async def check_lego_status(url, page_wait=20):
     """Simple check - just be patient"""
-    
+
     async with async_playwright() as p:
         browser = await p.chromium.launch(headless=True)
         page = await browser.new_page()
-        
+
         try:
             print(f"    Loading...")
             await page.goto(url, timeout=60000)
-            
+
             print(f"    Waiting {page_wait}s for content...")
             await page.wait_for_timeout(page_wait * 1000)
-            
+
             body_text = await page.inner_text('body')
             title = await page.title()
-            
+
             product_name = get_product_name(url)
             html = await page.content()
             with open(f'/tmp/lego_{product_name}.html', 'w') as f:
                 f.write(html)
             with open(f'/tmp/lego_{product_name}.txt', 'w') as f:
                 f.write(f"Title: {title}\n\n{body_text[:10000]}")
-            
-            await broswer.close()
-            
+
+            await browser.close()
+
             # Check if blocked
             if 'cloudflare' in body_text.lower() or 'verify you are human' in body_text.lower():
                 return 'BLOCKED', None, None
-            
+
             # Check status
             text_lower = body_text.lower()
 
@@ -107,9 +107,9 @@ async def check_lego_status(url, page_wait=20):
                 status = 'SOLD_OUT'
             else:
                 status = 'UNKNOWN'
-            
+
             return status, title, None
-            
+
         except Exception as e:
             await browser.close()
             return None, None, str(e)
@@ -124,7 +124,7 @@ def send_email(config, subject, body):
     msg['From'] = from_addr
     msg['To'] = recipient
 
-    
+
     try:
         with smtplib.SMTP(smtp_server) as smtp:
             smtp.send_message(msg)
@@ -134,10 +134,10 @@ def send_email(config, subject, body):
 
 async def main():
     cleanup_temp_files()
-    
+
     config = load_config()
     urls = load_urls()
-    
+
     if not urls:
         print(f"No URLs. Add to {URL_FILE}")
         return
@@ -162,14 +162,14 @@ async def main():
         else:
             emoji = {'AVAILABLE':'✅','PRE_ORDER':'📅','COMING_SOON':'🔜','BACKORDER':'⏳','RETIRED':'🚫','TEMP_OUT':'⏸️','SOLD_OUT':'❌','UNKNOWN':'❓'}
             print(f"    {emoji.get(status,'?')} {status}")
-            
+
             if status in ['AVAILABLE','PRE_ORDER','BACKORDER']:
                 if send_email(config, f"🎉 LEGO {status} - {product_name}", f"URL: {url}\nStatus: {status}"):
                     print(f"       ✉️  Email sent")
-        
+
         await asyncio.sleep(delay)
 
-    
+
     print("\n" + "=" * 70)
     print("Check /tmp/lego_*.txt to see what was extracted")
 
